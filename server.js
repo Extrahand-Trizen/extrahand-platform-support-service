@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 // Import routes
 const authRoutes = require('./routes/auth');
 const contactRoutes = require('./routes/contact');
+const articlesRoutes = require('./routes/articles');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -46,6 +47,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/articles', articlesRoutes);
 
 // 404 handler
 app.use((req, res) => {
