@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 2,
+  "dockerfilePath": "./Dockerfile",
+  "buildArguments": {
+    "CACHE_BUST": "latest"
+  },
+  "expose": {
+    "api": {
+      "containerPort": 5001,
+      "httpPort": 80,
+      "httpsPort": 443
+    }
+  },
+  "healthcheck": {
+    "path": "/health",
+    "port": 5001,
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3,
+    "startPeriod": 30
+  },
+  "notify": {
+    "webhook": "",
+    "slack": "",
+    "discord": ""
+  },
+  "customDomain": "",
+  "forceSsl": true,
+  "appName": "extrahand-platform-support-service",
+  "hasPersistentData": false,
+  "description": "ExtraHand Platform Support Service - Support portal backend API for authentication, articles, and contact management",
+  "instanceCount": 1,
+  "tags": [
+    "nodejs",
+    "express",
+    "mongodb",
+    "jwt",
+    "support",
+    "extrahand",
+    "api"
+  ],
+  "envVars": {
+    "NODE_ENV": "production",
+    "PORT": "5001",
+    "RATE_LIMIT_WINDOW_MS": "900000",
+    "RATE_LIMIT_MAX_REQUESTS": "100",
+    "CLIENT_URL": "https://extrahand.in,https://www.extrahand.in,http://localhost:3004",
+    "MONGODB_URI": "YOUR_MONGODB_URI_HERE",
+    "JWT_SECRET": "YOUR_JWT_SECRET_HERE",
+    "JWT_REFRESH_SECRET": "YOUR_JWT_REFRESH_SECRET_HERE",
+    "JWT_EXPIRES_IN": "15m",
+    "JWT_REFRESH_EXPIRES_IN": "7d"
+  },
+  "volumes": [],
+  "restart": {
+    "policy": "unless-stopped",
+    "maximumRetryCount": 10
+  },
+  "resources": {
+    "memory": "512Mi",
+    "cpu": "0.5"
+  },
+  "networking": {
+    "publishAllPorts": false,
+    "enableTcpProxy": false
+  }
+}
