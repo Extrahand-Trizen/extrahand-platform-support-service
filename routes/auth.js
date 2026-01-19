@@ -1,7 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { signAccessToken, signRefreshToken } = require('../utils/jwt');
+const { sendPasswordResetEmail } = require('../utils/email');
 const router = express.Router();
 
 // Helper function to validate strong password
@@ -11,7 +13,7 @@ const isStrongPassword = (password) => {
   const hasLowerCase = /[a-z]/.test(password);
   const hasNumber = /[0-9]/.test(password);
   const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-  
+
   return password.length >= minLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
 };
 
@@ -38,8 +40,8 @@ router.post('/signup', async (req, res) => {
 
     // Validate password strength
     if (!isStrongPassword(password)) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 8 characters and contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character' 
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters and contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character'
       });
     }
 
@@ -73,12 +75,12 @@ router.post('/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
-    
+
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0];
       return res.status(409).json({ error: `${field} already exists` });
     }
-    
+
     res.status(500).json({ error: 'Failed to signup. Please try again.' });
   }
 });
@@ -115,8 +117,8 @@ router.post('/login', async (req, res) => {
     // Check if account is locked
     if (user.lockUntil && user.lockUntil > new Date()) {
       const remainingTime = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
-      return res.status(429).json({ 
-        error: `Too many login attempts. Account is locked. Try again after ${remainingTime} minutes.` 
+      return res.status(429).json({
+        error: `Too many login attempts. Account is locked. Try again after ${remainingTime} minutes.`
       });
     }
 
@@ -125,15 +127,15 @@ router.post('/login', async (req, res) => {
     if (!valid) {
       await user.incLoginAttempts();
       const attemptsLeft = 5 - (user.loginAttempts + 1);
-      
+
       if (attemptsLeft <= 0) {
-        return res.status(429).json({ 
-          error: 'Too many failed login attempts. Account locked for 15 minutes.' 
+        return res.status(429).json({
+          error: 'Too many failed login attempts. Account locked for 15 minutes.'
         });
       }
-      
-      return res.status(401).json({ 
-        error: `Invalid credentials. ${attemptsLeft} attempts remaining.` 
+
+      return res.status(401).json({
+        error: `Invalid credentials. ${attemptsLeft} attempts remaining.`
       });
     }
 
@@ -142,7 +144,7 @@ router.post('/login', async (req, res) => {
       let message = 'Account not approved yet';
       if (user.status === 'REJECTED') message = 'Account has been rejected';
       if (user.status === 'SUSPENDED') message = 'Account has been suspended';
-      
+
       return res.status(403).json({ error: message });
     }
 
@@ -150,11 +152,11 @@ router.post('/login', async (req, res) => {
     await user.resetLoginAttempts();
 
     // Update last login info
-    const clientIP = req.headers['x-forwarded-for'] || 
-                     req.headers['x-real-ip'] || 
-                     req.ip || 
-                     'unknown';
-    
+    const clientIP = req.headers['x-forwarded-for'] ||
+      req.headers['x-real-ip'] ||
+      req.ip ||
+      'unknown';
+
     user.lastLoginAt = new Date();
     user.lastLoginIP = clientIP;
     await user.save();
@@ -195,10 +197,100 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/logout
-router.post('/logout', (req, res) => {
-  res.clearCookie('refreshToken');
-  res.status(200).json({ message: 'Logout successful' });
+// POST /api/auth/forgot-password
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    if (!email.toLowerCase().endsWith('@gmail.com')) {
+      return res.status(400).json({ error: 'Only Gmail addresses (@gmail.com) are allowed' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    // Safety: always return success even if user doesn't exist
+    if (!user) {
+      return res.status(200).json({
+        message: 'If your email is registered, you will receive a password reset link shortly.',
+      });
+    }
+
+    // Generate token
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Send email
+    const resetURL = `${process.env.CLIENT_URL || 'http://localhost:3004'}/reset-password/${resetToken}`;
+
+    try {
+      await sendPasswordResetEmail(user.email, resetURL, user.name);
+    } catch (emailError) {
+      console.error('Failed to send reset email:', emailError);
+      // Still return success to client
+    }
+
+    res.status(200).json({
+      message: 'If your email is registered, you will receive a password reset link shortly.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters and contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character'
+      });
+    }
+
+    // Hash the token to compare with stored hashed token
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with valid token
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() }
+    }).select('+passwordHash +resetPasswordToken +resetPasswordExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
+    }
+
+    // Hash new password
+    const SALT_ROUNDS = 12;
+    user.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    // Clear reset token fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    // Reset login attempts if any
+    user.loginAttempts = 0;
+    user.lockUntil = undefined;
+
+    await user.save();
+
+    res.status(200).json({
+      message: 'Password reset successful. You can now login with your new password.',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
 });
 
 module.exports = router;
