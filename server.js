@@ -27,7 +27,7 @@ const limiter = rateLimit({
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3004',
+  origin: [process.env.CLIENT_URL || 'http://localhost:3004', 'http://localhost:3005'],
   credentials: true,
 }));
 app.use(express.json());
@@ -37,8 +37,8 @@ app.use('/api/', limiter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
+  res.status(200).json({
+    status: 'ok',
     message: 'Support Server Backend is running',
     timestamp: new Date().toISOString()
   });
@@ -57,8 +57,8 @@ app.use((req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(err.status || 500).json({ 
-    error: err.message || 'Internal server error' 
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error'
   });
 });
 
