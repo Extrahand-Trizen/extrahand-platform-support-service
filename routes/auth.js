@@ -6,6 +6,21 @@ const { signAccessToken, signRefreshToken } = require('../utils/jwt');
 const { sendPasswordResetEmail } = require('../utils/email');
 const router = express.Router();
 
+const getFrontendBaseUrl = () => {
+  const primaryUrl = process.env.FRONTEND_URL;
+  if (primaryUrl) {
+    return primaryUrl.trim().replace(/\/$/, '');
+  }
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3004';
+  const firstUrl = clientUrl
+    .split(',')
+    .map((url) => url.trim())
+    .find(Boolean);
+
+  return (firstUrl || 'http://localhost:3004').replace(/\/$/, '');
+};
+
 // Helper function to validate strong password
 const isStrongPassword = (password) => {
   const minLength = 8;
@@ -224,7 +239,7 @@ router.post('/forgot-password', async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     // Send email
-    const resetURL = `${process.env.CLIENT_URL || 'http://localhost:3004'}/reset-password/${resetToken}`;
+    const resetURL = `${getFrontendBaseUrl()}/reset-password/${resetToken}`;
 
     try {
       await sendPasswordResetEmail(user.email, resetURL, user.name);
