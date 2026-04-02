@@ -274,13 +274,16 @@ router.post('/reset-password', async (req, res) => {
 
     // Hash the token to compare with stored hashed token
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    console.log('Reset attempt - Hashed token:', hashedToken.substring(0, 20) + '...');
 
     // Find user with valid token
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() }
-    }).select('+passwordHash +resetPasswordToken +resetPasswordExpires');
+    }).select('+passwordHash +resetPasswordToken +resetPasswordExpires +email +loginAttempts +lockUntil');
 
+    console.log('User found:', !!user);
+    
     if (!user) {
       return res.status(400).json({ error: 'Password reset token is invalid or has expired' });
     }
@@ -298,13 +301,17 @@ router.post('/reset-password', async (req, res) => {
     user.lockUntil = undefined;
 
     await user.save();
+    console.log('Password reset successful for user:', user.email);
 
     res.status(200).json({
       message: 'Password reset successful. You can now login with your new password.',
     });
   } catch (error) {
     console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Failed to reset password' });
+    res.status(500).json({ 
+      error: 'Failed to reset password',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
