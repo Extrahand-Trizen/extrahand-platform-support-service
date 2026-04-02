@@ -137,8 +137,15 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    const storedPasswordHash = user.passwordHash || user.password;
+    if (!storedPasswordHash) {
+      return res.status(403).json({
+        error: 'This account does not have a password yet. Use Forgot Password to create one first.'
+      });
+    }
+
     // Verify password
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    const valid = await bcrypt.compare(password, storedPasswordHash);
     if (!valid) {
       await user.incLoginAttempts();
       const attemptsLeft = 5 - (user.loginAttempts + 1);
@@ -182,8 +189,6 @@ router.post('/login', async (req, res) => {
       email: user.email,
       role: user.role,
     };
-
-    const accessToken = signAccessToken(tokenPayload);
     const refreshToken = signRefreshToken(tokenPayload);
 
     // Set refresh token as HTTP-only cookie
