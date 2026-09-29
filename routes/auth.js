@@ -189,6 +189,7 @@ router.post('/login', async (req, res) => {
       email: user.email,
       role: user.role,
     };
+    const accessToken = signAccessToken(tokenPayload);
     const refreshToken = signRefreshToken(tokenPayload);
 
     // Set refresh token as HTTP-only cookie
